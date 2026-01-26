@@ -7383,6 +7383,7 @@ qemuBuildAccelCommandLine(virCommand *cmd,
     case VIR_DOMAIN_VIRT_PARALLELS:
     case VIR_DOMAIN_VIRT_BHYVE:
     case VIR_DOMAIN_VIRT_VZ:
+    case VIR_DOMAIN_VIRT_ACRN:
     case VIR_DOMAIN_VIRT_NONE:
     case VIR_DOMAIN_VIRT_LAST:
         break;

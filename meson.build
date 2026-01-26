@@ -1570,6 +1570,10 @@ elif get_option('driver_lxc').enabled()
   error('linux and remote_driver are required for LXC')
 endif
 
+if not get_option('driver_acrn').disabled() and host_machine.system() == 'linux' and host_machine.cpu_family() == 'x86_64'
+  conf.set('WITH_ACRN', 1)
+endif
+
 if not get_option('driver_ch').disabled()
   if host_machine.system() == 'linux' and (host_machine.cpu_family() == 'x86_64' or host_machine.cpu_family() == 'aarch64')
     use_ch = true
@@ -2234,6 +2238,7 @@ driver_summary = {
   'VBox': conf.has('WITH_VBOX'),
   'VMware': conf.has('WITH_VMWARE'),
   'vz': conf.has('WITH_VZ'),
+  'acrn': conf.has('WITH_ACRN'),
 }
 summary(driver_summary, section: 'Drivers', bool_yn: true)
 

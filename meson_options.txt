@@ -88,6 +88,7 @@ option('driver_vbox', type: 'feature', value: 'auto', description: 'VirtualBox X
 option('vbox_xpcomc_dir', type: 'string', value: '', description: 'Location of directory containing VirtualBox XPCOMC library')
 option('driver_vmware', type: 'feature', value: 'auto', description: 'VMware driver')
 option('driver_vz', type: 'feature', value: 'auto', description: 'Virtuozzo driver')
+option('driver_acrn', type: 'feature', value: 'auto', description: 'ACRN-Hypervisor driver')
 
 option('secdriver_apparmor', type: 'feature', value: 'auto', description: 'use AppArmor security driver')
 # dep:secdriver_apparmor
