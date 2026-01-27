@@ -18,8 +18,8 @@ acrnDomainDefPostParse(virDomainDefPtr def,
                        void *parseOpaque G_GNUC_UNUSED)
 {
     /* Add an implicit PCI root controller */
-    if (virDomainDefMaybeAddController(def, VIR_DOMAIN_CONTROLLER_TYPE_PCI, 0,
-                                       VIR_DOMAIN_CONTROLLER_MODEL_PCI_ROOT) < 0)
+    if (!virDomainDefMaybeAddController(def, VIR_DOMAIN_CONTROLLER_TYPE_PCI, 0,
+                                       VIR_DOMAIN_CONTROLLER_MODEL_PCI_ROOT))
         return -1;
 
     return 0;
@@ -275,6 +275,26 @@ acrnDomainDeviceDefPostParse(virDomainDeviceDefPtr dev,
     case VIR_DOMAIN_DEVICE_WATCHDOG:
     case VIR_DOMAIN_DEVICE_GRAPHICS:
     case VIR_DOMAIN_DEVICE_RNG:
+    case VIR_DOMAIN_DEVICE_NONE:
+    case VIR_DOMAIN_DEVICE_LEASE:
+    case VIR_DOMAIN_DEVICE_FS:
+    case VIR_DOMAIN_DEVICE_SOUND:
+    case VIR_DOMAIN_DEVICE_VIDEO:
+    case VIR_DOMAIN_DEVICE_HUB:
+    case VIR_DOMAIN_DEVICE_REDIRDEV:
+    case VIR_DOMAIN_DEVICE_SMARTCARD:
+    case VIR_DOMAIN_DEVICE_MEMBALLOON:
+    case VIR_DOMAIN_DEVICE_NVRAM:
+    case VIR_DOMAIN_DEVICE_SHMEM:
+    case VIR_DOMAIN_DEVICE_TPM:
+    case VIR_DOMAIN_DEVICE_PANIC:
+    case VIR_DOMAIN_DEVICE_MEMORY:
+    case VIR_DOMAIN_DEVICE_IOMMU:
+    case VIR_DOMAIN_DEVICE_VSOCK:
+    case VIR_DOMAIN_DEVICE_AUDIO:
+    case VIR_DOMAIN_DEVICE_CRYPTO:
+    case VIR_DOMAIN_DEVICE_PSTORE:
+	case VIR_DOMAIN_DEVICE_LAST:
     default:
         virReportError(VIR_ERR_XML_ERROR,
                        _("device type %s not supported"),
@@ -305,8 +325,7 @@ acrnDomainObjPrivateAlloc(void *opaque G_GNUC_UNUSED)
 {
     acrnDomainObjPrivatePtr priv;
 
-    if (VIR_ALLOC(priv) < 0)
-        return NULL;
+	priv = g_new0(acrnDomainObjPrivate, 1);
 
     return priv;
 }
@@ -345,13 +364,19 @@ static void
 acrnDomainDefNamespaceFree(void *nsdata)
 {
     acrnDomainXmlNsDefPtr nsdef = nsdata;
+	int i;
 
-    if (!nsdef)
+    if (!nsdef) {
         return;
+	}
+
+	for (i = 0; i < nsdef->nargs; i++) {
+		VIR_FREE(nsdef->args[i]);
+	}
+	VIR_FREE(nsdef->args);
 
     if (nsdef->cpu_affinity)
-	VIR_FREE(nsdef->cpu_affinity);
-    virStringListFreeCount(nsdef->args, nsdef->nargs);
+	    VIR_FREE(nsdef->cpu_affinity);
     VIR_FREE(nsdef);
 }
 
@@ -411,13 +436,11 @@ acrnDomainDefNamespaceParseCommandlineArgs(acrnDomainXmlNsDefPtr nsdef,
         return -1;
     }
 
-    if (nnodes == 0)
+    if (nnodes == 0) {
         return 0;
+	}
 
-    if (VIR_ALLOC_N(nsdef->args, nnodes) < 0) {
-        virReportError(VIR_ERR_NO_MEMORY, NULL);
-        return -1;
-    }
+	nsdef->args = g_new0(char *, nnodes);
 
     for (i = 0; i < nnodes; i++) {
         if (!(nsdef->args[nsdef->nargs++] =
@@ -438,8 +461,7 @@ acrnDomainDefNamespaceParse(xmlXPathContextPtr ctxt,
     acrnDomainXmlNsDefPtr nsdata;
     int ret = -1;
 
-    if (VIR_ALLOC(nsdata) < 0)
-        return -1;
+	nsdata = g_new0(acrnDomainXmlNsDef, 1);
 
     if (acrnDomainDefNamespaceParseConfig(nsdata, ctxt) < 0 ||
         acrnDomainDefNamespaceParseCommandlineArgs(nsdata, ctxt) < 0)
@@ -522,5 +544,5 @@ virAcrnDriverCreateXMLConf(void)
     return virDomainXMLOptionNew(&virAcrnDriverDomainDefParserConfig,
                                  &virAcrnDriverPrivateDataCallbacks,
                                  &virAcrnDriverDomainXMLNamespace,
-                                 NULL, NULL);
+                                 NULL, NULL, NULL);
 }

@@ -5,23 +5,7 @@
 #include <uuid/uuid.h>
 #include "configmake.h"
 #include "datatypes.h"
-#include "node_device_conf.h"
-#include "virdomainobjlist.h"
-#include "virerror.h"
-#include "viralloc.h"
-#include "virutil.h"
 #include "cpu/cpu.h"
-#include "virhostcpu.h"
-#include "vircommand.h"
-#include "virthread.h"
-#include "virstring.h"
-#include "virfile.h"
-#include "virhostdev.h"
-#include "virnodesuspend.h"
-#include "virnetdevbridge.h"
-#include "virnetdevtap.h"
-#include "virfdstream.h"
-#include "virlog.h"
 #include "domain_event.h"
 #include "viraccessapicheck.h"
 #include "acrn_driver.h"
@@ -237,11 +221,7 @@ acrnSetVcpuAffinityInfo(virDomainObjPtr vm, size_t *allocMap)
 
     src = acrnGetCpuAffinity(def);
 
-    if (VIR_ALLOC_N(str, strlen(src)) < 0) {
-        virReportError(VIR_ERR_NO_MEMORY, NULL);
-        ret = -ENOMEM;
-        goto cleanup;
-    }
+    str = g_new0(char, strlen(src));
     strcpy(str, src);
 
     priv = vm->privateData;
@@ -266,7 +246,9 @@ acrnSetVcpuAffinityInfo(virDomainObjPtr vm, size_t *allocMap)
         for (i = 0; i < acrn_driver->nodeInfo.cpus; i++) {
             if (apicid == acrn_driver->apicidMap[i]) {
                 allocMap[i] += 1;
-                virBitmapSetBit(priv->cpuAffinitySet, i);
+                if (virBitmapSetBit(priv->cpuAffinitySet, i) < 0) {
+					virReportError(VIR_ERR_OPERATION_FAILED, NULL);
+				}
                 break;
             }
         }
@@ -300,10 +282,8 @@ acrnSetCpumask(virDomainDefPtr def, size_t *allocMap)
         goto cleanup;
     }
 
-    if (VIR_ALLOC_N(pos, def->maxvcpus) < 0 || VIR_ALLOC_N(used, def->maxvcpus) < 0) {
-        ret = -ENOMEM;
-        goto cleanup;
-    }
+    pos = g_new0(size_t, def->maxvcpus);
+    used = g_new0(size_t, def->maxvcpus);
 
     for (i = 0; i < def->maxvcpus; i++) {
         pos[i] = total_cpus - i - 1;
@@ -756,6 +736,26 @@ acrnCommandAddDeviceArg(virDomainDefPtr def,
     case VIR_DOMAIN_DEVICE_WATCHDOG:
     case VIR_DOMAIN_DEVICE_GRAPHICS:
     case VIR_DOMAIN_DEVICE_RNG:
+    case VIR_DOMAIN_DEVICE_NONE:
+    case VIR_DOMAIN_DEVICE_LEASE:
+    case VIR_DOMAIN_DEVICE_FS:
+    case VIR_DOMAIN_DEVICE_SOUND:
+    case VIR_DOMAIN_DEVICE_VIDEO:
+    case VIR_DOMAIN_DEVICE_HUB:
+    case VIR_DOMAIN_DEVICE_REDIRDEV:
+    case VIR_DOMAIN_DEVICE_SMARTCARD:
+    case VIR_DOMAIN_DEVICE_MEMBALLOON:
+    case VIR_DOMAIN_DEVICE_NVRAM:
+    case VIR_DOMAIN_DEVICE_SHMEM:
+    case VIR_DOMAIN_DEVICE_TPM:
+    case VIR_DOMAIN_DEVICE_PANIC:
+    case VIR_DOMAIN_DEVICE_MEMORY:
+    case VIR_DOMAIN_DEVICE_IOMMU:
+    case VIR_DOMAIN_DEVICE_VSOCK:
+    case VIR_DOMAIN_DEVICE_AUDIO:
+    case VIR_DOMAIN_DEVICE_CRYPTO:
+    case VIR_DOMAIN_DEVICE_PSTORE:
+    case VIR_DOMAIN_DEVICE_LAST:
     default:
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("device type %s"),
@@ -889,7 +889,7 @@ acrnProcessWaitForMonitor(virDomainObjPtr vm, acrnMonitorStopCallback stop)
 
     if (!priv->libDir)
         priv->libDir = g_strdup_printf("%s/domain-%s", ACRN_MONITOR_DIR, vm->def->name);
-    if (virFileMakePath(priv->libDir) < 0) {
+    if (g_mkdir_with_parents(priv->libDir, 0777) < 0) {
 	    virReportSystemError(errno,
 			                _("Failed to mkdir %s"),
 			                priv->libDir);
@@ -1253,7 +1253,7 @@ cleanup:
 }
 
 static int
-acrnDomainReboot(virDomainPtr dom, unsigned int flags)
+acrnDomainReboot(virDomainPtr dom, unsigned int flags G_GNUC_UNUSED)
 {
     acrnConnectPtr privconn = dom->conn->privateData;
     virDomainObjPtr vm;
@@ -1405,7 +1405,7 @@ acrnDomainSetAutostart(virDomainPtr domain, int autostart)
             goto cleanup;
 
         if (autostart) {
-            if (virFileMakePath(ACRN_AUTOSTART_DIR) < 0) {
+            if (g_mkdir_with_parents(ACRN_AUTOSTART_DIR, 0777) < 0) {
                 virReportSystemError(errno,
                                      _("cannot create autostart directory %s"),
                                      ACRN_AUTOSTART_DIR);
@@ -1623,7 +1623,7 @@ acrnDomainCreateXML(virConnectPtr conn,
                                         NULL, parse_flags)))
         goto cleanup_nolock;
 
-    if (!(vm = virDomainObjListAdd(privconn->domains, def,
+    if (!(vm = virDomainObjListAdd(privconn->domains, &def,
                                    privconn->xmlopt,
                                    VIR_DOMAIN_OBJ_LIST_ADD_LIVE |
                                    VIR_DOMAIN_OBJ_LIST_ADD_CHECK_LIVE, NULL)))
@@ -1752,7 +1752,7 @@ acrnDomainDefineXMLFlags(virConnectPtr conn, const char *xml,
 
     acrnDriverLock(privconn);
 
-    if (!(vm = virDomainObjListAdd(privconn->domains, def,
+    if (!(vm = virDomainObjListAdd(privconn->domains, &def,
                                    privconn->xmlopt,
                                    0, &oldDef)))
         goto cleanup;
@@ -2184,6 +2184,7 @@ acrnConnectGetVersion(virConnectPtr conn G_GNUC_UNUSED,
     virCommandPtr cmd;
     char *verstr = NULL;
     const char *dmstr = "DM version is: ";
+	unsigned long long _version = 0;
     int ret = -1;
 
     if (!(cmd = virCommandNewArgList(ACRN_DM_PATH, "-v", NULL))) {
@@ -2199,11 +2200,13 @@ acrnConnectGetVersion(virConnectPtr conn G_GNUC_UNUSED,
     if (!(dmstr = STRSKIP(verstr, dmstr)))
         goto cleanup;
 
-    if (virParseVersionString(dmstr, version, true) < 0) {
+    if (virStringParseVersion(&_version, dmstr, true) < 0) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("unknown release: %s"), dmstr);
         goto cleanup;
     }
+
+	*version = (unsigned long)version;
 
     ret = 0;
 
@@ -2368,6 +2371,7 @@ acrnNodeDeviceDetachFlags(virNodeDevicePtr dev,
     virPCIDevicePtr pci = NULL;
     acrnConnectPtr privconn = dev->conn->privateData;
     virHostdevManagerPtr hostdev_mgr = privconn->hostdevMgr;
+    virPCIDeviceAddress new_dev = { 0 };
     unsigned domain = 0, bus = 0, slot = 0, function = 0;
     int ret = -1;
 
@@ -2376,18 +2380,22 @@ acrnNodeDeviceDetachFlags(virNodeDevicePtr dev,
     if (!(xml = virNodeDeviceGetXMLDesc(dev, 0)))
         goto cleanup;
 
-    if (!(def = virNodeDeviceDefParseString(xml, EXISTING_DEVICE, NULL)))
+    if (!(def = virNodeDeviceDefParse(xml, NULL, EXISTING_DEVICE, NULL, NULL, NULL, false)))
         goto cleanup;
 
     if (acrnNodeDeviceGetPCIInfo(def, &domain, &bus, &slot, &function) < 0)
         goto cleanup;
 
-    if (!(pci = virPCIDeviceNew(domain, bus, slot, function)))
+    new_dev.domain = domain;
+    new_dev.bus = bus;
+    new_dev.slot = slot;
+    new_dev.function = function;
+    if (!(pci = virPCIDeviceNew(&new_dev)))
         goto cleanup;
 
     /* use the pci-stub driver */
-    if (!driverName || STREQ(driverName, "kvm")) {
-        virPCIDeviceSetStubDriver(pci, VIR_PCI_STUB_DRIVER_KVM);
+    if (!driverName) {
+        virPCIDeviceSetStubDriverType(pci, VIR_PCI_STUB_DRIVER_XEN);
     } else {
         virReportError(VIR_ERR_INVALID_ARG,
                        _("unsupported driver name '%s'"), driverName);
@@ -2421,19 +2429,24 @@ acrnNodeDeviceReAttach(virNodeDevicePtr dev)
     virPCIDevicePtr pci = NULL;
     acrnConnectPtr privconn = dev->conn->privateData;
     virHostdevManagerPtr hostdev_mgr = privconn->hostdevMgr;
+	virPCIDeviceAddress new_dev = { 0 };
     unsigned domain = 0, bus = 0, slot = 0, function = 0;
     int ret = -1;
 
     if (!(xml = virNodeDeviceGetXMLDesc(dev, 0)))
         goto cleanup;
 
-    if (!(def = virNodeDeviceDefParseString(xml, EXISTING_DEVICE, NULL)))
+    if (!(def = virNodeDeviceDefParse(xml, NULL, EXISTING_DEVICE, NULL, NULL, NULL, false)))
         goto cleanup;
 
     if (acrnNodeDeviceGetPCIInfo(def, &domain, &bus, &slot, &function) < 0)
         goto cleanup;
 
-    if (!(pci = virPCIDeviceNew(domain, bus, slot, function)))
+    new_dev.domain = domain;
+    new_dev.bus = bus;
+    new_dev.slot = slot;
+    new_dev.function = function;
+    if (!(pci = virPCIDeviceNew(&new_dev)))
         goto cleanup;
 
     if (virHostdevPCINodeDeviceReAttach(hostdev_mgr, pci) < 0)
@@ -2566,10 +2579,7 @@ acrnGetLapicMap(int nprocs, unsigned int **apicidMap)
     ssize_t rc;
     unsigned int *map;
 
-    if (VIR_ALLOC_N(map, nprocs) < 0) {
-        ret = -ENOMEM;
-        goto cleanup;
-    }
+    map = g_new0(unsigned int, nprocs);
 
     if ((fd = open(CPUINFO_PATH, O_RDONLY)) < 0) {
             virReportError(VIR_ERR_OPEN_FAILED, _("%s"), CPUINFO_PATH);
@@ -2716,10 +2726,7 @@ acrnInitPlatform(virNodeInfoPtr nodeInfo, size_t **allocMap)
 
     totalCpus = get_nprocs_conf();
 
-    if (VIR_ALLOC_N(map, totalCpus) < 0) {
-        ret = -ENOMEM;
-        goto cleanup;
-    }
+    map = g_new0(size_t, totalCpus);
 
     nodeInfo->cpus = totalCpus;
 
@@ -2766,7 +2773,7 @@ struct acrnProcessReconnectData {
 };
 static int
 viracrnProcessReconnect(virDomainObjPtr vm,
-                         void *opaque)
+                         void *opaque G_GNUC_UNUSED)
 {
     int ret = -1;
 
@@ -2791,6 +2798,7 @@ viracrnProcessReconnectAll(acrnConnectPtr driver)
 static virDrvStateInitResult
 acrnStateInitialize(bool privileged,
                     const char *root,
+                    bool monolithic G_GNUC_UNUSED,
                     virStateInhibitCallback callback G_GNUC_UNUSED,
                     void *opaque G_GNUC_UNUSED)
 {
@@ -2808,8 +2816,7 @@ acrnStateInitialize(bool privileged,
         return VIR_DRV_STATE_INIT_SKIPPED;
     }
 
-    if (VIR_ALLOC(acrn_driver) < 0)
-        return VIR_DRV_STATE_INIT_ERROR;
+    acrn_driver = g_new0(acrnConnect, 1);
 
     if (virMutexInit(&acrn_driver->lock) < 0) {
         VIR_FREE(acrn_driver);
@@ -2840,13 +2847,13 @@ acrnStateInitialize(bool privileged,
     if (!(acrn_driver->hostdevMgr = virHostdevManagerGetDefault()))
         goto cleanup;
 
-    if (virFileMakePath(ACRN_STATE_DIR) < 0) {
+    if (g_mkdir_with_parents(ACRN_STATE_DIR, 0777) < 0) {
 	    virReportSystemError(errno,
 			                _("Failed to mkdir %s"),
 			                ACRN_STATE_DIR);
 	    goto cleanup;
     }
-    if (virFileMakePath(ACRN_MONITOR_DIR) < 0) {
+    if (g_mkdir_with_parents(ACRN_MONITOR_DIR, 0777) < 0) {
 	    virReportSystemError(errno,
 			                _("Failed to mkdir %s"),
 			                ACRN_MONITOR_DIR);

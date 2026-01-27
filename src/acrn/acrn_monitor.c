@@ -90,10 +90,10 @@ acrnMonitorIORead(acrnMonitorPtr mon)
                 mon->buffer,
                 1023);
     if (got < 0) {
-        if (errno == EAGAIN)
         virReportSystemError(errno, "%s",
                                 _("Unable to read from monitor"));
         ret = -1;
+		return ret;
     }
 
     ret += got;
@@ -183,7 +183,7 @@ acrnMonitorCommand(acrnMonitorPtr mon,
 {
     int ret = -1;
     char *cmdstr = NULL;
-    char *txBuffer;
+    char *txBuffer = NULL;
     int txLength;
     acrnMonitorMessage msg;
     virTimeBackOffVar timebackoff;
@@ -375,6 +375,10 @@ acrnMonitorIO(int watch, int fd, int events, void *opaque)
 
     }
 
+	if (hangup) {
+		VIR_DEBUG("Hangup set to true");
+	}
+
     acrnMonitorUpdateWatch(mon);
 
     if (eof) {
@@ -408,7 +412,7 @@ acrnMonitorRegister(acrnMonitorPtr mon)
                                         VIR_EVENT_HANDLE_READABLE,
                                         acrnMonitorIO,
                                         mon,
-                                        virObjectFreeCallback)) < 0) {
+                                        virObjectUnref)) < 0) {
         virObjectUnref(mon);
         return false;
     }
@@ -504,8 +508,8 @@ acrnMonitorOpenInternal(virDomainObjPtr vm,
         return NULL;
     }
 
-    if (VIR_ALLOC(mon) < 0)
-        return NULL;
+    mon = g_new0(acrnMonitor, 1);
+
     if (virMutexInit(&mon->lock) < 0) {
         VIR_FREE(mon);
         return NULL;

@@ -90,10 +90,10 @@ acrnManagerIORead(acrnManagerPtr mon)
                 mon->buffer,
                 1023);
     if (got < 0) {
-        if (errno == EAGAIN)
         virReportSystemError(errno, "%s",
                                 _("Unable to read from monitor"));
         ret = -1;
+		return ret;
     }
 
     ret += got;
@@ -106,7 +106,7 @@ acrnManagerIORead(acrnManagerPtr mon)
 }
 
 static int
-acrnManagerIOProcess(acrnManagerPtr mon)
+acrnManagerIOProcess(acrnManagerPtr mon G_GNUC_UNUSED)
 {
     return 0;
 }
@@ -125,7 +125,7 @@ acrnManagerCommand(acrnManagerPtr mon,
 
     msg.rxObject = NULL;
 
-    VIR_DEBUG("acrnManagerCommand: $s", cmd);
+    VIR_DEBUG("acrnManagerCommand: %s", cmd);
     txBuffer = g_strdup_printf("%s:%s", cmd, vm->def->name);
     txLength = strlen(txBuffer);
 
@@ -137,7 +137,6 @@ acrnManagerCommand(acrnManagerPtr mon,
 
     VIR_DEBUG("Receive command reply ret=%d", ret);
 
- cleanup:
     VIR_FREE(txBuffer);
 
     return 0;
@@ -252,6 +251,10 @@ acrnManagerIO(int watch, int fd, int events, void *opaque)
 
     }
 
+	if (hangup) {
+		VIR_DEBUG("%s hangup set to true", __func__);
+	}
+
     acrnManagerUpdateWatch(mon);
 
     if (eof) {
@@ -283,7 +286,7 @@ acrnManagerRegister(acrnManagerPtr mon)
                                         VIR_EVENT_HANDLE_READABLE,
                                         acrnManagerIO,
                                         mon,
-                                        virObjectFreeCallback)) < 0) {
+                                        virObjectUnref)) < 0) {
         virObjectUnref(mon);
         return false;
     }
@@ -373,8 +376,8 @@ acrnManagerOpenInternal(virDomainObjPtr vm,
 {
     acrnManagerPtr mon = NULL;
 
-    if (VIR_ALLOC(mon) < 0)
-        return NULL;
+    mon = g_new0(acrnManager, 1);
+
     if (virMutexInit(&mon->lock) < 0) {
         VIR_FREE(mon);
         return NULL;

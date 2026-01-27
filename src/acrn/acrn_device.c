@@ -54,7 +54,7 @@ acrnDomainPCIAddressSetCreate(virDomainDefPtr def, unsigned int nbuses)
 
     if (virDomainPCIAddressBusSetModel(
                 &addrs->buses[0],
-                VIR_DOMAIN_CONTROLLER_MODEL_PCI_ROOT) < 0) {
+                VIR_DOMAIN_CONTROLLER_MODEL_PCI_ROOT, false) < 0) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("failed to set PCI bus model"));
         goto error;
@@ -133,6 +133,26 @@ acrnAssignPCIAddress(virDomainDefPtr def G_GNUC_UNUSED,
     case VIR_DOMAIN_DEVICE_WATCHDOG:
     case VIR_DOMAIN_DEVICE_GRAPHICS:
     case VIR_DOMAIN_DEVICE_RNG:
+    case VIR_DOMAIN_DEVICE_NONE:
+    case VIR_DOMAIN_DEVICE_LEASE:
+    case VIR_DOMAIN_DEVICE_FS:
+    case VIR_DOMAIN_DEVICE_SOUND:
+    case VIR_DOMAIN_DEVICE_VIDEO:
+    case VIR_DOMAIN_DEVICE_HUB:
+    case VIR_DOMAIN_DEVICE_REDIRDEV:
+    case VIR_DOMAIN_DEVICE_SMARTCARD:
+    case VIR_DOMAIN_DEVICE_MEMBALLOON:
+    case VIR_DOMAIN_DEVICE_NVRAM:
+    case VIR_DOMAIN_DEVICE_SHMEM:
+    case VIR_DOMAIN_DEVICE_TPM:
+    case VIR_DOMAIN_DEVICE_PANIC:
+    case VIR_DOMAIN_DEVICE_MEMORY:
+    case VIR_DOMAIN_DEVICE_IOMMU:
+    case VIR_DOMAIN_DEVICE_VSOCK:
+    case VIR_DOMAIN_DEVICE_AUDIO:
+    case VIR_DOMAIN_DEVICE_CRYPTO:
+    case VIR_DOMAIN_DEVICE_PSTORE:
+	case VIR_DOMAIN_DEVICE_LAST:
     default:
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("device type %s"),

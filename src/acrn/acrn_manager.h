@@ -2,6 +2,7 @@
 #define __ACRN_MANAGER_H__
 
 #include "domain_conf.h"
+#include "acrn_driver.h"
 
 typedef struct _acrnManager acrnManager;
 typedef acrnManager *acrnManagerPtr;
