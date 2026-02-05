@@ -198,7 +198,7 @@
     <xsl:value-of select="."/>
   </xsl:template>
 
-  <xsl:template match="node()" mode="copy">
+  <xsl:template match="*" mode="copy">
     <xsl:element name="{name()}">
       <xsl:copy-of select="./@*"/>
       <xsl:apply-templates mode="copy" />
