@@ -2660,10 +2660,12 @@ acrnInitPlatform(virNodeInfoPtr nodeInfo, size_t **allocMap)
         goto cleanup;
     }
 
+#if 0
     if (acrnOfflineCpus(nodeInfo->cpus) < 0) {
         ret = -EIO;
         goto cleanup;
     }
+#endif
 
     *allocMap = map;
     map = NULL;
