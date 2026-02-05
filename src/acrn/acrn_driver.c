@@ -865,6 +865,7 @@ acrnBuildStartCmd(virDomainObjPtr vm)
     /* Command monitor */
     monitor_path = g_strdup_printf("%s/domain-%s/monitor.sock", ACRN_MONITOR_DIR, vm->def->name);
     virCommandAddArgList(cmd, "--cmd_monitor", monitor_path, NULL);
+    virCommandAddArgList(cmd, "--logger_setting", "kmsg,level=3;disk,level=3", NULL);
 
     return cmd;
 }
