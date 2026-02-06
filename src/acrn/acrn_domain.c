@@ -271,9 +271,30 @@ acrnDomainDeviceDefPostParse(virDomainDeviceDefPtr dev,
         }
         break;
     }
+    case VIR_DOMAIN_DEVICE_VIDEO: {
+		virDomainVideoDef *video = dev->data.video;
+
+		if (video->type != VIR_DOMAIN_VIDEO_TYPE_VIRTIO) {
+			virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+					_("video type %s"),
+					virDomainVideoTypeToString(video->type));
+			return -1;
+		}
+		break;
+    }
+    case VIR_DOMAIN_DEVICE_GRAPHICS: {
+		virDomainGraphicsDef *graphics = dev->data.graphics;
+
+		if (graphics->type != VIR_DOMAIN_GRAPHICS_TYPE_SDL) {
+			virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+					_("graphic type %s"),
+					virDomainGraphicsTypeToString(graphics->type));
+			return -1;
+		}
+		break;
+    }
     case VIR_DOMAIN_DEVICE_INPUT:
     case VIR_DOMAIN_DEVICE_WATCHDOG:
-    case VIR_DOMAIN_DEVICE_GRAPHICS:
     case VIR_DOMAIN_DEVICE_RNG:
     default:
         virReportError(VIR_ERR_XML_ERROR,

@@ -536,6 +536,19 @@ acrnAddVirtioConsoleCmd(virBufferPtr buf, virDomainChrDefPtr chr)
     }
 }
 
+static void
+acrnAddVirtioGpuCmd(virBufferPtr buf, virDomainVideoDef *video, virDomainGraphicsDef *graphics)
+{
+	if (graphics->type != VIR_DOMAIN_GRAPHICS_TYPE_SDL) {
+		return;
+	}
+
+	if (graphics->data.sdl.fullscreen) {
+		virBufferAsprintf(buf, ",geometry=fullscreen%s", graphics->data.sdl.display);
+	}
+	/* TODO: Windowed display */
+}
+
 struct acrnCmdDeviceData {
     virDomainObjPtr vm;
     virCommandPtr cmd;
@@ -752,9 +765,54 @@ acrnCommandAddDeviceArg(virDomainDefPtr def,
         }
         break;
     }
+    case VIR_DOMAIN_DEVICE_VIDEO: {
+		virDomainVideoDef *video = dev->data.video;
+		/* FIXME: ASSUMPTION:
+		 * we have at most one virtio-gpu per VM
+		 * we have at most one graphics output (SDL/lease/vnc) per virtio-gpu
+		 * so we access graphics definition within video processing to determine
+		 * SDL/lease output configuration
+		 */
+		virDomainGraphicsDef *graphic;
+		virBuffer buf = VIR_BUFFER_INITIALIZER;
+
+		if (def->ngraphics == 0) {
+			virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "graphics definition missing");
+			virBufferFreeAndReset(&buf);
+			return -1;
+		}
+
+		graphic = def->graphics[0];
+
+		if (video->type != VIR_DOMAIN_VIDEO_TYPE_VIRTIO) {
+			virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+					_("video type %s"),
+					virDomainVideoTypeToString(video->type));
+		} else {
+			if (info->type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI) {
+				virBufferAsprintf(&buf, "%u:%u:%u,virtio-gpu",
+						info->addr.pci.bus,
+						info->addr.pci.slot,
+						info->addr.pci.function);
+				acrnAddVirtioGpuCmd(&buf, video, graphic);
+
+                virCommandAddArg(cmd, "-s");
+                virCommandAddArgBuffer(cmd, &buf);
+			}
+		}
+		virBufferFreeAndReset(&buf);
+		break;
+    }
+    case VIR_DOMAIN_DEVICE_GRAPHICS: {
+		virDomainGraphicsDef *graphics = dev->data.graphics;
+		if (graphics->type == VIR_DOMAIN_GRAPHICS_TYPE_SDL) {
+
+		} else {
+			/* TODO, vnc */
+		}
+    }
     case VIR_DOMAIN_DEVICE_INPUT:
     case VIR_DOMAIN_DEVICE_WATCHDOG:
-    case VIR_DOMAIN_DEVICE_GRAPHICS:
     case VIR_DOMAIN_DEVICE_RNG:
     default:
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,

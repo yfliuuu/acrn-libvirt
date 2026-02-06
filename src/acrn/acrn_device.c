@@ -129,9 +129,27 @@ acrnAssignPCIAddress(virDomainDefPtr def G_GNUC_UNUSED,
             goto fail;
         break;
     }
+    case VIR_DOMAIN_DEVICE_VIDEO: {
+        virDomainVideoDef *video = dev->data.video;
+
+        if (video->backend == VIR_DOMAIN_VIDEO_BACKEND_TYPE_DEFAULT &&
+            video->type == VIR_DOMAIN_VIDEO_TYPE_VIRTIO &&
+            virDeviceInfoPCIAddressIsWanted(info) &&
+            virDomainPCIAddressReserveNextAddr(addrs, info,
+                                               VIR_PCI_CONNECT_TYPE_PCI_DEVICE,
+                                               -1) < 0)
+            goto fail;
+        break;
+    }
+    case VIR_DOMAIN_DEVICE_GRAPHICS: {
+        virDomainGraphicsDef *graphics = dev->data.graphics;
+		/* Currently supporing only sdl */
+		if (graphics->type != VIR_DOMAIN_GRAPHICS_TYPE_SDL)
+			goto fail;
+		break;
+    }
     case VIR_DOMAIN_DEVICE_INPUT:
     case VIR_DOMAIN_DEVICE_WATCHDOG:
-    case VIR_DOMAIN_DEVICE_GRAPHICS:
     case VIR_DOMAIN_DEVICE_RNG:
     default:
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
