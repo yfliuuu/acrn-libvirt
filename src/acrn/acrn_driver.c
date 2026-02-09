@@ -624,24 +624,12 @@ acrnCommandAddDeviceArg(virDomainDefPtr def,
         virDomainHostdevDefPtr hostdev = dev->data.hostdev;
         virDomainHostdevSubsysPtr subsys = &hostdev->source.subsys;
 
-        virCommandAddArg(cmd, "-s");
-
         if (subsys->type == VIR_DOMAIN_HOSTDEV_SUBSYS_TYPE_USB) {
-            virDomainHostdevSubsysUSBPtr usbsrc = &subsys->u.usb;
-
-            if (!usbsrc->autoAddress) {
-                virReportError(VIR_ERR_NO_SOURCE, _("usb hostdev"));
-                return -1;
-            }
-
-            virCommandAddArgFormat(cmd, "%u:%u:%u,passthru,%x/%x/0",
-                                   info->addr.pci.bus,
-                                   info->addr.pci.slot,
-                                   info->addr.pci.function,
-                                   usbsrc->bus, usbsrc->device);
+			/* Handled by USB controller */
         } else { /* VIR_DOMAIN_HOSTDEV_SUBSYS_TYPE_PCI */
             virDomainHostdevSubsysPCIPtr pcisrc = &subsys->u.pci;
 
+			virCommandAddArg(cmd, "-s");
             virCommandAddArgFormat(cmd, "%u:%u:%u,passthru,%x/%x/%x",
                                    info->addr.pci.bus,
                                    info->addr.pci.slot,
@@ -678,6 +666,35 @@ acrnCommandAddDeviceArg(virDomainDefPtr def,
                 }
             }
         }
+
+		if (ctrl->type == VIR_DOMAIN_CONTROLLER_TYPE_USB) {
+			virBufferAsprintf(&buf, "%u:%u:%u,xhci",
+					info->addr.pci.bus,
+					info->addr.pci.slot,
+					info->addr.pci.function);
+
+            for (i = 0; i < def->nhostdevs; i++) {
+				virDomainHostdevDef *hostdev = def->hostdevs[i];
+				virDomainHostdevSubsys *subsys = &(hostdev->source.subsys);
+
+				if (subsys->type != VIR_DOMAIN_HOSTDEV_SUBSYS_TYPE_USB)
+					continue;
+
+				virDomainHostdevSubsysUSB *usbsrc = &subsys->u.usb;
+
+				if (usbsrc->autoAddress) {
+					virReportError(VIR_ERR_NO_SOURCE, _("usb hostdev"));
+					virBufferFreeAndReset(&buf);
+					return -1;
+				}
+
+				virBufferAsprintf(&buf, ",%u-%u", usbsrc->bus, usbsrc->device);
+				found = true;
+			}
+			if (!found)
+				virBufferFreeAndReset(&buf);
+
+		}
 
         if (found) {
             virCommandAddArg(cmd, "-s");

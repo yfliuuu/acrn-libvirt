@@ -145,7 +145,8 @@ acrnDomainDeviceDefPostParse(virDomainDeviceDefPtr dev,
         }
 
         if (info->type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE &&
-            info->type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI) {
+            info->type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI &&
+			info->type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_USB) {
             virReportError(VIR_ERR_XML_ERROR,
                            _("hostdev address type %s not supported"),
                            virDomainDeviceAddressTypeToString(info->type));
@@ -158,7 +159,8 @@ acrnDomainDeviceDefPostParse(virDomainDeviceDefPtr dev,
 
         if (ctrl->type != VIR_DOMAIN_CONTROLLER_TYPE_SATA &&
             ctrl->type != VIR_DOMAIN_CONTROLLER_TYPE_VIRTIO_SERIAL &&
-            ctrl->type != VIR_DOMAIN_CONTROLLER_TYPE_PCI) {
+            ctrl->type != VIR_DOMAIN_CONTROLLER_TYPE_PCI &&
+			ctrl->type != VIR_DOMAIN_CONTROLLER_TYPE_USB) {
             virReportError(VIR_ERR_XML_ERROR,
                            _("controller type %s not supported"),
                            virDomainControllerTypeToString(ctrl->type));
