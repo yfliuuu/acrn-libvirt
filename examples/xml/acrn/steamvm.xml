@@ -1,0 +1,52 @@
+<domain type='acrn'>
+	<name>steamvm</name>
+	<uuid>d2795438-25d6-11e8-864e-cb7a18b34643</uuid>
+	<memory>8388608</memory>
+	<os>
+		<type>hvm</type>
+		<loader>/usr/share/acrn/bios/OVMF.fd</loader>
+	</os>
+	<features>
+		<acpi/>
+	</features>
+	<vcpu placement='static' cpuset="2,3,4,5,6,7,8,9,10,11">10</vcpu>
+	<devices>
+		<disk type='file' device='disk'>
+			<source file='/path/to/disk.img'/>
+			<target dev='sda' bus='virtio'/>
+			<address type='pci' bus='0x00' slot='0x03' function='0x0'/>
+		</disk>
+		<video>
+			<model type='virtio'/>
+			<address type='pci' bus='0x00' slot='0x04' function='0x0'/>
+		</video>
+		<graphics type='sdl' display=':0' fullscreen='yes'/>
+		<hostdev mode='subsystem' type='pci' managed='yes'>
+			<source>
+				<address domain='0x0000' bus='0x00' slot='0x02' function='0x1'/>
+			</source>
+			<address type='pci' bus='0x00' slot='0x02' function='0x0'/>
+		</hostdev>
+		<hostdev mode='subsystem' type='usb' managed='yes'>
+			<source>
+				<address type='usb' bus='3' device='5' />
+			</source>
+			<address type='usb' bus='1' slot='1'/>
+		</hostdev>
+		<hostdev mode='subsystem' type='usb' managed='yes'>
+			<source>
+				<address type='usb' bus='3' device='6' />
+			</source>
+			<address type='usb' bus='1' slot='2'/>
+		</hostdev>
+		<graphics type='sdl' display=':0' fullscreen='yes'/>
+		<controller type='usb' index='0'>
+			<address type='pci' bus='0x00' slot='0x05' function='0x0'/>
+		</controller>
+		<interface type='ethernet'>
+			<target dev='tap1'/>
+			<model type='virtio'/>
+			<address type='pci' bus='0x00' slot='0x06' function='0x0'/>
+		</interface>
+	</devices>
+</domain>
