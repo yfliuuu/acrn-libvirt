@@ -268,11 +268,10 @@ virAcrnProcessStop(struct _acrnConn *driver,
         return -1;
     }
 
-    if (!(cmd = virAcrnProcessBuildDestroyCmd(driver, vm->def)))
-        return -1;
-
-    if (virCommandRun(cmd, NULL) < 0)
-        goto cleanup;
+    if (reason != VIR_DOMAIN_SHUTOFF_SHUTDOWN) {
+        /* VIR_DOMAIN_SHUTOFF_SHUTDOWN means guest shut itself down. */
+        virAcrnProcessShutdown(vm);
+    }
 
     if ((priv != NULL) && (priv->mon != NULL))
          acrnMonitorClose(priv->mon);
@@ -301,7 +300,6 @@ virAcrnProcessStop(struct _acrnConn *driver,
 
     acrnProcessStopHook(driver, vm, VIR_HOOK_ACRN_OP_RELEASE);
 
- cleanup:
     virPidFileDelete(ACRN_STATE_DIR, vm->def->name);
     virDomainDeleteConfig(ACRN_STATE_DIR, NULL, vm);
 
@@ -318,10 +316,7 @@ virAcrnProcessShutdown(virDomainObj *vm)
         return -1;
     }
 
-    /* Acrn tries to perform ACPI shutdown when it receives
-     * SIGTERM signal. So we just issue SIGTERM here and rely
-     * on the acrn monitor to clean things up if process disappears.
-     */
+    /* ACRN handles SIGTERM and exits gracefully */
     if (virProcessKill(vm->pid, SIGTERM) != 0) {
         VIR_WARN("Failed to terminate acrn process for VM '%s': %s",
                  vm->def->name, virGetLastErrorMessage());
