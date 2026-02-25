@@ -46,6 +46,7 @@
 #include "virnetdev.h"
 #include "virnetdevbridge.h"
 #include "virnetdevtap.h"
+#include "virtime.h"
 
 #define VIR_FROM_THIS   VIR_FROM_ACRN
 
@@ -321,31 +322,12 @@ virAcrnProcessStart(virConnectPtr conn,
     return virAcrnProcessStartImpl(driver, vm, reason);
 }
 
-int
-virAcrnProcessStop(struct _acrnConn *driver,
-                    virDomainObj *vm,
-                    virDomainShutoffReason reason)
+void
+virAcrnProcessStopCallback(struct _acrnConn *driver,
+                           virDomainObj *vm,
+                           virDomainShutoffReason reason)
 {
-    int ret = -1;
-    g_autoptr(virCommand) cmd = NULL;
     acrnDomainObjPrivate *priv = vm->privateData;
-
-    if (!virDomainObjIsActive(vm)) {
-        VIR_DEBUG("VM '%s' not active", vm->def->name);
-        return 0;
-    }
-
-    if (vm->pid == 0) {
-        virReportError(VIR_ERR_INTERNAL_ERROR,
-                       _("Invalid PID %1$d for VM"),
-                       (int)vm->pid);
-        return -1;
-    }
-
-    if (reason != VIR_DOMAIN_SHUTOFF_SHUTDOWN) {
-        /* VIR_DOMAIN_SHUTOFF_SHUTDOWN means guest shut itself down. */
-        virAcrnProcessShutdown(vm);
-    }
 
     if ((priv != NULL) && (priv->mon != NULL))
          acrnMonitorClose(priv->mon);
@@ -364,8 +346,6 @@ virAcrnProcessStop(struct _acrnConn *driver,
         }
     }
 
-    ret = 0;
-
     virCloseCallbacksDomainRemove(vm, NULL, acrnProcessAutoDestroy);
 
     virDomainObjSetState(vm, VIR_DOMAIN_SHUTOFF, reason);
@@ -377,7 +357,51 @@ virAcrnProcessStop(struct _acrnConn *driver,
     virPidFileDelete(ACRN_STATE_DIR, vm->def->name);
     virDomainDeleteConfig(ACRN_STATE_DIR, NULL, vm);
 
-    return ret;
+    if (!vm->persistent)
+        virDomainObjListRemove(driver->domains, vm);
+}
+
+int
+virAcrnProcessStop(struct _acrnConn *driver G_GNUC_UNUSED,
+                    virDomainObj *vm,
+                    virDomainShutoffReason reason G_GNUC_UNUSED)
+{
+    virTimeBackOffVar timebackoff;
+
+    if (!virDomainObjIsActive(vm)) {
+        VIR_DEBUG("VM '%s' not active", vm->def->name);
+        return 0;
+    }
+
+    if (vm->pid == 0) {
+        virReportError(VIR_ERR_INTERNAL_ERROR,
+                       _("Invalid PID %1$d for VM"),
+                       (int)vm->pid);
+        return -1;
+    }
+
+    ignore_value(virAcrnProcessShutdown(vm));
+
+    /* Wait for state change with 10 seconds timeout */
+    if (virTimeBackOffStart(&timebackoff, 1, 10 * 1000) < 0) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "Failed to setup timebackoff value");
+        return -1;
+    }
+
+    while (virTimeBackOffWait(&timebackoff)) {
+        /* Waiting for callback to set pid to 0 */
+        if (vm->pid == 0)
+            break;
+    }
+
+    if (vm->pid != 0) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "Time out waiting for domain to shutoff. Force closing. \
+                Hypervisor state might be incorrect. Host reboot recommended.");
+        virAcrnProcessStopCallback(driver, vm, reason);
+        return -1;
+    }
+
+    return 0;
 }
 
 int

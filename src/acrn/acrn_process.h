@@ -34,6 +34,10 @@ int virAcrnProcessStart(virConnect *conn,
                          virDomainRunningReason reason,
                          unsigned int flags);
 
+void virAcrnProcessStopCallback(struct _acrnConn *driver,
+                                virDomainObj *vm,
+                                virDomainShutoffReason reason);
+
 int virAcrnProcessStop(struct _acrnConn *driver,
                         virDomainObj *vm,
                         virDomainShutoffReason reason);

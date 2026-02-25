@@ -126,17 +126,17 @@ acrnMonitorIO(int watch, int fd, int events, void *opaque)
     if (events & (VIR_EVENT_HANDLE_READABLE | VIR_EVENT_HANDLE_HANGUP)) {
         /* acrn-dm process has exited */
 
+        /* Technically we need to specify reason based on exit value and
+         * status (i.e., normal exit, non-zero exit, or if the acrn-dm has
+         * crashed). But by design only parent process can collect child
+         * status, so we specify reason as "shutdown" directly.
+         */
+        VIR_INFO("Domain %s shutdown", vm->def->name);
+        virAcrnProcessStopCallback(driver, vm, VIR_DOMAIN_SHUTOFF_SHUTDOWN);
+
         if (mon->reboot) {
-            VIR_INFO("Domain %s shutdown. Restarting domain.", vm->def->name);
+            VIR_INFO("Restarting domain %s", vm->def->name);
             virAcrnProcessRestart(driver, vm);
-        } else {
-            /* Technically we need to specify reason based on exit value and
-             * status (i.e., normal exit, non-zero exit, or if the acrn-dm has
-             * crashed). But by design only parent process can collect child
-             * status, so we specify reason as "shutdown" directly.
-             */
-            VIR_INFO("Domain %s shutdown", vm->def->name);
-            virAcrnProcessStop(driver, vm, VIR_DOMAIN_SHUTOFF_SHUTDOWN);
         }
     }
 
