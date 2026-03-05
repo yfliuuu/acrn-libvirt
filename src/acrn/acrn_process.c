@@ -125,7 +125,6 @@ virAcrnProcessStartImpl(struct _acrnConn *driver,
     g_autofree char *logfile = NULL;
     VIR_AUTOCLOSE logfd = -1;
     g_autoptr(virCommand) cmd = NULL;
-    g_autoptr(virCommand) load_cmd = NULL;
     acrnDomainObjPrivate *priv = vm->privateData;
     int ret = -1;
 
@@ -200,8 +199,8 @@ virAcrnProcessStartImpl(struct _acrnConn *driver,
         g_autoptr(virCommand) destroy_cmd = NULL;
         if ((destroy_cmd = virAcrnProcessBuildDestroyCmd(driver,
                                                           vm->def)) != NULL) {
-            virCommandSetOutputFD(load_cmd, &logfd);
-            virCommandSetErrorFD(load_cmd, &logfd);
+            virCommandSetOutputFD(destroy_cmd, &logfd);
+            virCommandSetErrorFD(destroy_cmd, &logfd);
             ignore_value(virCommandRun(destroy_cmd, &exitstatus));
         }
 
@@ -427,8 +426,10 @@ virAcrnProcessStop(struct _acrnConn *driver,
         virAcrnProcessShutdown(vm);
     }
 
-    if ((priv != NULL) && (priv->mon != NULL))
-         acrnMonitorClose(priv->mon);
+    if ((priv != NULL) && (priv->mon != NULL)) {
+        acrnMonitorClose(priv->mon);
+        priv->mon = NULL;
+    }
 
     acrnProcessStopHook(driver, vm, VIR_HOOK_ACRN_OP_STOPPED);
 
@@ -491,6 +492,12 @@ virAcrnProcessRestart(struct _acrnConn *driver,
                        virDomainObj *vm)
 {
     if (virAcrnProcessStop(driver, vm, VIR_DOMAIN_SHUTOFF_SHUTDOWN) < 0)
+        return -1;
+
+    if (acrnProcessStartHook(driver, vm, VIR_HOOK_ACRN_OP_PREPARE) < 0)
+        return -1;
+
+    if (acrnProcessPrepareDomain(driver, vm, 0) < 0)
         return -1;
 
     if (virAcrnProcessStartImpl(driver, vm, VIR_DOMAIN_RUNNING_BOOTED) < 0)

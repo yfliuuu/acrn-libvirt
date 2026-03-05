@@ -984,6 +984,13 @@ acrnDomainReboot(virDomainPtr dom, unsigned int flags)
         goto cleanup;
 
     priv = vm->privateData;
+
+    if (!priv->mon) {
+        virReportError(VIR_ERR_OPERATION_INVALID, "%s",
+                       _("domain monitor is not available"));
+        goto cleanup;
+    }
+
     acrnMonitorSetReboot(priv->mon);
 
     ret = virAcrnProcessShutdown(vm);
@@ -1041,6 +1048,13 @@ acrnDomainOpenConsole(virDomainPtr dom,
     if (chr->source->type != VIR_DOMAIN_CHR_TYPE_PTY) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("character device %1$s is not using a PTY"),
+                       dev_name ? dev_name : NULLSTR(chr->info.alias));
+        goto cleanup;
+    }
+
+    if (!priv->ttyfds || i >= vm->def->nserials || priv->ttyfds[i] < 0) {
+        virReportError(VIR_ERR_OPERATION_INVALID,
+                       _("character device %1$s is not initialized"),
                        dev_name ? dev_name : NULLSTR(chr->info.alias));
         goto cleanup;
     }
