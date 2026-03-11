@@ -61,6 +61,7 @@
 #include "acrn_conf.h"
 #include "acrn_device.h"
 #include "acrn_driver.h"
+#include "acrn_agent.h"
 #include "acrn_command.h"
 #include "acrn_parse_command.h"
 #include "acrn_domain.h"
@@ -965,6 +966,72 @@ acrnDomainShutdown(virDomainPtr dom)
 }
 
 static int
+acrnDomainPMSuspendForDuration(virDomainPtr dom,
+                               unsigned int target,
+                               unsigned long long duration,
+                               unsigned int flags)
+{
+    virConnectPtr conn = dom->conn;
+    struct _acrnConn *privconn = conn->privateData;
+    virDomainObj *vm = NULL;
+    virDomainChrDef *agentChannel;
+    virObjectEvent *event = NULL;
+    int ret = -1;
+
+    virCheckFlags(0, -1);
+
+    if (duration) {
+        virReportError(VIR_ERR_ARGUMENT_UNSUPPORTED, "%s",
+                       _("Duration not supported. Use 0 for now"));
+        return -1;
+    }
+
+    if (target != VIR_NODE_SUSPEND_TARGET_MEM) {
+        virReportError(VIR_ERR_ARGUMENT_UNSUPPORTED,
+                       _("PMSuspend type %1$u not supported by acrn driver"),
+                       target);
+        return -1;
+    }
+
+    if (!(vm = acrnDomObjFromDomain(dom)))
+        goto cleanup;
+
+    if (virDomainPMSuspendForDurationEnsureACL(conn, vm->def) < 0)
+        goto cleanup;
+
+    if (virDomainObjBeginAgentJob(vm, VIR_AGENT_JOB_MODIFY) < 0)
+        goto cleanup;
+
+    if (virDomainObjCheckActive(vm) < 0)
+        goto endjob;
+
+    if (!(agentChannel = virAcrnFindAgentConfig(vm->def))) {
+        virReportError(VIR_ERR_ARGUMENT_UNSUPPORTED, "%s",
+                       _("QEMU guest agent is not configured"));
+        goto endjob;
+    }
+
+    if (virAcrnAgentSuspend(vm, agentChannel, target) < 0)
+        goto endjob;
+
+    virDomainObjSetState(vm, VIR_DOMAIN_PMSUSPENDED,
+                         VIR_DOMAIN_PMSUSPENDED_UNKNOWN);
+    event = virDomainEventLifecycleNewFromObj(vm,
+                                              VIR_DOMAIN_EVENT_PMSUSPENDED,
+                                              VIR_DOMAIN_EVENT_PMSUSPENDED_MEMORY);
+
+    ret = 0;
+
+ endjob:
+    virDomainObjEndAgentJob(vm);
+
+ cleanup:
+    virDomainObjEndAPI(&vm);
+    virObjectEventStateQueue(privconn->domainEventState, event);
+    return ret;
+}
+
+static int
 acrnDomainReboot(virDomainPtr dom, unsigned int flags)
 {
     virConnectPtr conn = dom->conn;
@@ -1709,6 +1776,7 @@ static virHypervisorDriver acrnHypervisorDriver = {
     .domainDestroyFlags = acrnDomainDestroyFlags, /* 5.6.0 */
     .domainShutdown = acrnDomainShutdown, /* 1.3.3 */
     .domainShutdownFlags = acrnDomainShutdownFlags, /* 5.6.0 */
+    .domainPMSuspendForDuration = acrnDomainPMSuspendForDuration, /* 10.2.0 */
     .domainReboot = acrnDomainReboot, /* TBD */
     .domainLookupByUUID = acrnDomainLookupByUUID, /* 1.2.2 */
     .domainLookupByName = acrnDomainLookupByName, /* 1.2.2 */
