@@ -155,6 +155,31 @@ acrnAssignDevicePCISlots(virDomainDef *def,
             return -1;
     }
 
+    for (i = 0; i < def->nchannels; i++) {
+        virDomainChrDef *channel = def->channels[i];
+
+        if (channel->targetType != VIR_DOMAIN_CHR_CHANNEL_TARGET_TYPE_VIRTIO)
+            continue;
+
+        if (channel->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE &&
+            channel->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("unsupported channel address type"));
+            return -1;
+        }
+
+        if (channel->info.type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI &&
+            !virPCIDeviceAddressIsEmpty(&channel->info.addr.pci))
+            continue;
+
+        channel->info.type = VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI;
+
+        if (virDomainPCIAddressReserveNextAddr(addrs, &channel->info,
+                                               VIR_PCI_CONNECT_TYPE_PCI_DEVICE,
+                                               -1) < 0)
+            return -1;
+    }
+
     for (i = 0; i < def->nvideos; i++) {
         if (!virDeviceInfoPCIAddressIsWanted(&def->videos[i]->info))
             continue;

@@ -315,6 +315,57 @@ acrnBuildDiskArgStr(const virDomainDef *def,
 }
 
 static int
+acrnBuildChannelArgStr(virDomainChrDef *channel,
+                       virCommand *cmd)
+{
+    const char *mode;
+
+    if (channel->targetType != VIR_DOMAIN_CHR_CHANNEL_TARGET_TYPE_VIRTIO) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                       _("only virtio channel targets are supported"));
+        return -1;
+    }
+
+    if (channel->source->type != VIR_DOMAIN_CHR_TYPE_UNIX) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                       _("only UNIX socket channels are supported"));
+        return -1;
+    }
+
+    if (!channel->source->data.nix.path) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                       _("channel UNIX socket path is not configured"));
+        return -1;
+    }
+
+    if (!channel->target.name) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                       _("channel virtio port name is not configured"));
+        return -1;
+    }
+
+    if (channel->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI ||
+        virPCIDeviceAddressIsEmpty(&channel->info.addr.pci)) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                       _("channel PCI address is not configured"));
+        return -1;
+    }
+
+    mode = channel->source->data.nix.listen ? "server" : "client";
+
+    virCommandAddArg(cmd, "-s");
+    virCommandAddArgFormat(cmd,
+                           "%d:%d,virtio-console,socket:%s=%s:%s",
+                           channel->info.addr.pci.slot,
+                           channel->info.addr.pci.function,
+                           channel->target.name,
+                           channel->source->data.nix.path,
+                           mode);
+
+    return 0;
+}
+
+static int
 acrnBuildControllerArgStr(const virDomainDef *def,
                            virDomainControllerDef *controller,
                            struct _acrnConn *driver,
@@ -354,10 +405,11 @@ acrnBuildControllerArgStr(const virDomainDef *def,
         virCommandAddArgFormat(cmd, "%d:0,lpc",
                                 controller->info.addr.pci.slot);
         break;
+    case VIR_DOMAIN_CONTROLLER_TYPE_VIRTIO_SERIAL:
+        break;
     case VIR_DOMAIN_CONTROLLER_TYPE_IDE:
     case VIR_DOMAIN_CONTROLLER_TYPE_FDC:
     case VIR_DOMAIN_CONTROLLER_TYPE_SCSI:
-    case VIR_DOMAIN_CONTROLLER_TYPE_VIRTIO_SERIAL:
     case VIR_DOMAIN_CONTROLLER_TYPE_CCID:
     case VIR_DOMAIN_CONTROLLER_TYPE_XENBUS:
     case VIR_DOMAIN_CONTROLLER_TYPE_LAST:
@@ -788,6 +840,11 @@ virAcrnProcessBuildAcrnCmd(struct _acrnConn *driver, virDomainDef *def,
     }
     for (i = 0; i < def->ndisks; i++) {
         if (acrnBuildDiskArgStr(def, def->disks[i], cmd) < 0)
+            return NULL;
+    }
+
+    for (i = 0; i < def->nchannels; i++) {
+        if (acrnBuildChannelArgStr(def->channels[i], cmd) < 0)
             return NULL;
     }
 
