@@ -965,6 +965,67 @@ acrnDomainShutdown(virDomainPtr dom)
     return acrnDomainShutdownFlags(dom, 0);
 }
 
+static bool
+acrnDomainAgentAvailable(virDomainObj *vm,
+                         virDomainChrDef **agentChannel,
+                         bool reportError)
+{
+    virDomainChrDef *channel = virAcrnFindAgentConfig(vm->def);
+
+    *agentChannel = NULL;
+
+    if (virDomainObjGetState(vm, NULL) != VIR_DOMAIN_RUNNING) {
+        if (reportError) {
+            virReportError(VIR_ERR_OPERATION_INVALID, "%s",
+                           _("domain is not running"));
+        }
+        return false;
+    }
+
+    if (!channel) {
+        if (reportError) {
+            virReportError(VIR_ERR_ARGUMENT_UNSUPPORTED, "%s",
+                           _("QEMU guest agent is not configured"));
+        }
+        return false;
+    }
+
+    if (channel->source->type != VIR_DOMAIN_CHR_TYPE_UNIX) {
+        if (reportError) {
+            virReportError(VIR_ERR_ARGUMENT_UNSUPPORTED, "%s",
+                           _("QEMU guest agent channel is not using a UNIX socket"));
+        }
+        return false;
+    }
+
+    if (!channel->source->data.nix.path) {
+        if (reportError) {
+            virReportError(VIR_ERR_ARGUMENT_UNSUPPORTED, "%s",
+                           _("QEMU guest agent UNIX socket path is not configured"));
+        }
+        return false;
+    }
+
+    if (!channel->source->data.nix.listen) {
+        if (reportError) {
+            virReportError(VIR_ERR_ARGUMENT_UNSUPPORTED, "%s",
+                           _("QEMU guest agent UNIX socket must be configured in server mode"));
+        }
+        return false;
+    }
+
+    if (channel->state == VIR_DOMAIN_CHR_DEVICE_STATE_DISCONNECTED) {
+        if (reportError) {
+            virReportError(VIR_ERR_AGENT_UNRESPONSIVE, "%s",
+                           _("QEMU guest agent is not connected"));
+        }
+        return false;
+    }
+
+    *agentChannel = channel;
+    return true;
+}
+
 static int
 acrnDomainPMSuspendForDuration(virDomainPtr dom,
                                unsigned int target,
@@ -1002,14 +1063,8 @@ acrnDomainPMSuspendForDuration(virDomainPtr dom,
     if (virDomainObjBeginAgentJob(vm, VIR_AGENT_JOB_MODIFY) < 0)
         goto cleanup;
 
-    if (virDomainObjCheckActive(vm) < 0)
+    if (!acrnDomainAgentAvailable(vm, &agentChannel, true))
         goto endjob;
-
-    if (!(agentChannel = virAcrnFindAgentConfig(vm->def))) {
-        virReportError(VIR_ERR_ARGUMENT_UNSUPPORTED, "%s",
-                       _("QEMU guest agent is not configured"));
-        goto endjob;
-    }
 
     if (virAcrnAgentSuspend(vm, agentChannel, target) < 0)
         goto endjob;

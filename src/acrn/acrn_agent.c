@@ -63,9 +63,9 @@ acrnAgentOpenUnix(const char *socketpath)
     }
 
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        virReportSystemError(errno,
-                             _("failed to connect to guest agent socket %1$s"),
-                             socketpath);
+        virReportError(VIR_ERR_AGENT_UNRESPONSIVE,
+                       _("QEMU guest agent is not connected (%1$s)"),
+                       socketpath);
         goto error;
     }
 
