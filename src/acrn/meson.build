@@ -1,4 +1,5 @@
 acrn_sources = files(
+  'acrn_agent.c',
   'acrn_capabilities.c',
   'acrn_command.c',
   'acrn_conf.c',
