@@ -1395,6 +1395,13 @@ acrnStateInitialize(bool privileged,
         goto cleanup;
     }
 
+    if (g_mkdir_with_parents(ACRN_MONITOR_DIR, 0777) < 0) {
+        virReportSystemError(errno,
+                             _("Failed to mkdir %1$s"),
+                             ACRN_MONITOR_DIR);
+        goto cleanup;
+    }
+
     if ((acrn_driver->lockFD =
          virPidFileAcquire(ACRN_STATE_DIR, "driver", getpid())) < 0)
         goto cleanup;

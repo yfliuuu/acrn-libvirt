@@ -38,7 +38,6 @@
 
 #define VIR_FROM_THIS VIR_FROM_ACRN
 
-#define ACRN_MONITOR_DIR            "/var/lib/libvirt/acrn"
 #define ACRN_MANAGER_DIR            "/var/lib/life_mngr"
 
 VIR_LOG_INIT("acrn.acrn_command");
