@@ -39,5 +39,9 @@ virAcrnProcessBuildDestroyCmd(struct _acrnConn *driver,
                                virDomainDef *def);
 
 virCommand *
+virAcrnProcessBuildResumeCmd(struct _acrnConn *driver,
+                              virDomainDef *def);
+
+virCommand *
 virAcrnProcessBuildLoadCmd(struct _acrnConn *driver, virDomainDef *def,
                             const char *devmap_file, char **devicesmap_out);

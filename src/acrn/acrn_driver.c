@@ -1087,6 +1087,57 @@ acrnDomainPMSuspendForDuration(virDomainPtr dom,
 }
 
 static int
+acrnDomainPMWakeup(virDomainPtr dom,
+                   unsigned int flags)
+{
+    virConnectPtr conn = dom->conn;
+    struct _acrnConn *privconn = conn->privateData;
+    virDomainObj *vm = NULL;
+    virObjectEvent *event = NULL;
+    g_autoptr(virCommand) cmd = NULL;
+    int ret = -1;
+
+    virCheckFlags(0, -1);
+
+    if (!(vm = acrnDomObjFromDomain(dom)))
+        goto cleanup;
+
+    if (virDomainPMWakeupEnsureACL(conn, vm->def) < 0)
+        goto cleanup;
+
+    if (virDomainObjBeginJob(vm, VIR_JOB_MODIFY) < 0)
+        goto cleanup;
+
+    if (virDomainObjGetState(vm, NULL) != VIR_DOMAIN_PMSUSPENDED) {
+        virReportError(VIR_ERR_OPERATION_INVALID,
+                       "%s", _("Domain is not suspended"));
+        goto endjob;
+    }
+
+    if (!(cmd = virAcrnProcessBuildResumeCmd(privconn, vm->def)))
+        goto endjob;
+
+    if (virCommandRun(cmd, NULL) < 0)
+        goto endjob;
+
+    virDomainObjSetState(vm, VIR_DOMAIN_RUNNING,
+                         VIR_DOMAIN_RUNNING_WAKEUP);
+    event = virDomainEventLifecycleNewFromObj(vm,
+                                              VIR_DOMAIN_EVENT_STARTED,
+                                              VIR_DOMAIN_EVENT_STARTED_WAKEUP);
+
+    ret = 0;
+
+ endjob:
+    virDomainObjEndJob(vm);
+
+ cleanup:
+    virDomainObjEndAPI(&vm);
+    virObjectEventStateQueue(privconn->domainEventState, event);
+    return ret;
+}
+
+static int
 acrnDomainReboot(virDomainPtr dom, unsigned int flags)
 {
     virConnectPtr conn = dom->conn;
@@ -1839,6 +1890,7 @@ static virHypervisorDriver acrnHypervisorDriver = {
     .domainShutdown = acrnDomainShutdown, /* 1.3.3 */
     .domainShutdownFlags = acrnDomainShutdownFlags, /* 5.6.0 */
     .domainPMSuspendForDuration = acrnDomainPMSuspendForDuration, /* 10.2.0 */
+    .domainPMWakeup = acrnDomainPMWakeup, /* TBD */
     .domainReboot = acrnDomainReboot, /* TBD */
     .domainLookupByUUID = acrnDomainLookupByUUID, /* 1.2.2 */
     .domainLookupByName = acrnDomainLookupByName, /* 1.2.2 */

@@ -908,3 +908,14 @@ virAcrnProcessBuildDestroyCmd(struct _acrnConn *driver G_GNUC_UNUSED,
 
     return cmd;
 }
+
+virCommand *
+virAcrnProcessBuildResumeCmd(struct _acrnConn *driver G_GNUC_UNUSED,
+                              virDomainDef *def)
+{
+    virCommand *cmd = virCommandNew(ACRNCTL);
+
+    virCommandAddArgList(cmd, "resume", def->name, NULL);
+
+    return cmd;
+}
