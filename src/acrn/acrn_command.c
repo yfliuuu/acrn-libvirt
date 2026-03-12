@@ -315,7 +315,8 @@ acrnBuildDiskArgStr(const virDomainDef *def,
 }
 
 static int
-acrnBuildChannelArgStr(virDomainChrDef *channel,
+acrnBuildChannelArgStr(const virDomainDef *def,
+                       virDomainChrDef *channel,
                        virCommand *cmd)
 {
     const char *mode;
@@ -332,11 +333,10 @@ acrnBuildChannelArgStr(virDomainChrDef *channel,
         return -1;
     }
 
-    if (!channel->source->data.nix.path) {
-        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                       _("channel UNIX socket path is not configured"));
-        return -1;
-    }
+    if (!channel->source->data.nix.path)
+        channel->source->data.nix.path = g_strdup_printf("%s/%s-agent.sock",
+                                                         ACRN_MONITOR_DIR,
+                                                         def->name);
 
     if (!channel->target.name) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
@@ -844,7 +844,7 @@ virAcrnProcessBuildAcrnCmd(struct _acrnConn *driver, virDomainDef *def,
     }
 
     for (i = 0; i < def->nchannels; i++) {
-        if (acrnBuildChannelArgStr(def->channels[i], cmd) < 0)
+        if (acrnBuildChannelArgStr(def, def->channels[i], cmd) < 0)
             return NULL;
     }
 
