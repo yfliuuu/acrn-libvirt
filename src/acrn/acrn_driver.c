@@ -1026,6 +1026,110 @@ acrnDomainAgentAvailable(virDomainObj *vm,
     return true;
 }
 
+static const unsigned int acrnDomainGetGuestInfoSupportedTypes =
+    VIR_DOMAIN_GUEST_INFO_USERS |
+    VIR_DOMAIN_GUEST_INFO_OS |
+    VIR_DOMAIN_GUEST_INFO_TIMEZONE |
+    VIR_DOMAIN_GUEST_INFO_HOSTNAME;
+
+static int
+acrnDomainGetGuestInfoCheckSupport(unsigned int types,
+                                   unsigned int *supportedTypes)
+{
+    if (types == 0) {
+        *supportedTypes = acrnDomainGetGuestInfoSupportedTypes;
+        return 0;
+    }
+
+    *supportedTypes = types & acrnDomainGetGuestInfoSupportedTypes;
+
+    if (types != *supportedTypes) {
+        virReportError(VIR_ERR_INVALID_ARG,
+                       _("unsupported guest information types '0x%1$x'"),
+                       types & ~acrnDomainGetGuestInfoSupportedTypes);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int
+acrnDomainGetGuestInfo(virDomainPtr dom,
+                       unsigned int types,
+                       virTypedParameterPtr *params,
+                       int *nparams,
+                       unsigned int flags)
+{
+    virConnectPtr conn = dom->conn;
+    virDomainObj *vm = NULL;
+    virDomainChrDef *agentChannel = NULL;
+    unsigned int supportedTypes;
+    bool report_unsupported = types != 0;
+    g_autofree char *hostname = NULL;
+    int maxparams = 0;
+    int ret = -1;
+    int rc;
+
+    virCheckFlags(0, -1);
+
+    if (acrnDomainGetGuestInfoCheckSupport(types, &supportedTypes) < 0)
+        return -1;
+
+    if (!(vm = acrnDomObjFromDomain(dom)))
+        goto cleanup;
+
+    if (virDomainGetGuestInfoEnsureACL(conn, vm->def) < 0)
+        goto cleanup;
+
+    if (virDomainObjBeginAgentJob(vm, VIR_AGENT_JOB_QUERY) < 0)
+        goto cleanup;
+
+    if (!acrnDomainAgentAvailable(vm, &agentChannel, true))
+        goto endjob;
+
+    if (supportedTypes & VIR_DOMAIN_GUEST_INFO_USERS) {
+        rc = virAcrnAgentGetUsers(vm, agentChannel, params, nparams,
+                                  &maxparams, report_unsupported);
+        if (rc == -1)
+            goto endjob;
+    }
+
+    if (supportedTypes & VIR_DOMAIN_GUEST_INFO_OS) {
+        rc = virAcrnAgentGetOSInfo(vm, agentChannel, params, nparams,
+                                   &maxparams, report_unsupported);
+        if (rc == -1)
+            goto endjob;
+    }
+
+    if (supportedTypes & VIR_DOMAIN_GUEST_INFO_TIMEZONE) {
+        rc = virAcrnAgentGetTimezone(vm, agentChannel, params, nparams,
+                                     &maxparams, report_unsupported);
+        if (rc == -1)
+            goto endjob;
+    }
+
+    if (supportedTypes & VIR_DOMAIN_GUEST_INFO_HOSTNAME) {
+        rc = virAcrnAgentGetHostname(vm, agentChannel, &hostname,
+                                     report_unsupported);
+        if (rc == -1)
+            goto endjob;
+    }
+
+    if (hostname &&
+        virTypedParamsAddString(params, nparams, &maxparams,
+                                "hostname", hostname) < 0)
+        goto endjob;
+
+    ret = 0;
+
+ endjob:
+    virDomainObjEndAgentJob(vm);
+
+ cleanup:
+    virDomainObjEndAPI(&vm);
+    return ret;
+}
+
 static int
 acrnDomainPMSuspendForDuration(virDomainPtr dom,
                                unsigned int target,
@@ -1889,6 +1993,7 @@ static virHypervisorDriver acrnHypervisorDriver = {
     .domainDestroyFlags = acrnDomainDestroyFlags, /* 5.6.0 */
     .domainShutdown = acrnDomainShutdown, /* 1.3.3 */
     .domainShutdownFlags = acrnDomainShutdownFlags, /* 5.6.0 */
+    .domainGetGuestInfo = acrnDomainGetGuestInfo, /* 11.4.0 */
     .domainPMSuspendForDuration = acrnDomainPMSuspendForDuration, /* 10.2.0 */
     .domainPMWakeup = acrnDomainPMWakeup, /* TBD */
     .domainReboot = acrnDomainReboot, /* TBD */

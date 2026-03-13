@@ -27,3 +27,29 @@ virDomainChrDef *virAcrnFindAgentConfig(virDomainDef *def);
 int virAcrnAgentSuspend(virDomainObj *vm,
                         virDomainChrDef *agentChannel,
                         unsigned int target);
+
+int virAcrnAgentGetUsers(virDomainObj *vm,
+                         virDomainChrDef *agentChannel,
+                         virTypedParameterPtr *params,
+                         int *nparams,
+                         int *maxparams,
+                         bool report_unsupported);
+
+int virAcrnAgentGetOSInfo(virDomainObj *vm,
+                          virDomainChrDef *agentChannel,
+                          virTypedParameterPtr *params,
+                          int *nparams,
+                          int *maxparams,
+                          bool report_unsupported);
+
+int virAcrnAgentGetTimezone(virDomainObj *vm,
+                            virDomainChrDef *agentChannel,
+                            virTypedParameterPtr *params,
+                            int *nparams,
+                            int *maxparams,
+                            bool report_unsupported);
+
+int virAcrnAgentGetHostname(virDomainObj *vm,
+                            virDomainChrDef *agentChannel,
+                            char **hostname,
+                            bool report_unsupported);
