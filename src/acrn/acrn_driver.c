@@ -1179,6 +1179,7 @@ acrnDomainPMSuspendForDuration(virDomainPtr dom,
     virDomainObj *vm = NULL;
     virDomainChrDef *agentChannel;
     virObjectEvent *event = NULL;
+    int eventDetail = VIR_DOMAIN_EVENT_PMSUSPENDED_MEMORY;
     int ret = -1;
 
     virCheckFlags(0, -1);
@@ -1189,7 +1190,8 @@ acrnDomainPMSuspendForDuration(virDomainPtr dom,
         return -1;
     }
 
-    if (target != VIR_NODE_SUSPEND_TARGET_MEM) {
+    if (!(target == VIR_NODE_SUSPEND_TARGET_MEM ||
+          target == VIR_NODE_SUSPEND_TARGET_DISK)) {
         virReportError(VIR_ERR_ARGUMENT_UNSUPPORTED,
                        _("PMSuspend type %1$u not supported by acrn driver"),
                        target);
@@ -1211,11 +1213,14 @@ acrnDomainPMSuspendForDuration(virDomainPtr dom,
     if (virAcrnAgentSuspend(vm, agentChannel, target) < 0)
         goto endjob;
 
+    if (target == VIR_NODE_SUSPEND_TARGET_DISK)
+        eventDetail = VIR_DOMAIN_EVENT_PMSUSPENDED_DISK;
+
     virDomainObjSetState(vm, VIR_DOMAIN_PMSUSPENDED,
                          VIR_DOMAIN_PMSUSPENDED_UNKNOWN);
     event = virDomainEventLifecycleNewFromObj(vm,
                                               VIR_DOMAIN_EVENT_PMSUSPENDED,
-                                              VIR_DOMAIN_EVENT_PMSUSPENDED_MEMORY);
+                                              eventDetail);
 
     ret = 0;
 
