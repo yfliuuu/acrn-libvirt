@@ -50,6 +50,7 @@
 #include "virstring.h"
 #include "cpu/cpu.h"
 #include "viraccessapicheck.h"
+#include "viraccessapicheckqemu.h"
 #include "virhostcpu.h"
 #include "virhostmem.h"
 #include "virhostdev.h"
@@ -1026,6 +1027,43 @@ acrnDomainAgentAvailable(virDomainObj *vm,
     return true;
 }
 
+static char *
+acrnDomainQemuAgentCommand(virDomainPtr domain,
+                           const char *cmd,
+                           int timeout,
+                           unsigned int flags)
+{
+    virDomainObj *vm = NULL;
+    virDomainChrDef *agentChannel = NULL;
+    int ret = -1;
+    char *result = NULL;
+
+    virCheckFlags(0, NULL);
+
+    if (!(vm = acrnDomObjFromDomain(domain)))
+        goto cleanup;
+
+    if (virDomainQemuAgentCommandEnsureACL(domain->conn, vm->def) < 0)
+        goto cleanup;
+
+    if (virDomainObjBeginAgentJob(vm, VIR_AGENT_JOB_MODIFY) < 0)
+        goto cleanup;
+
+    if (!acrnDomainAgentAvailable(vm, &agentChannel, true))
+        goto endjob;
+
+    ret = virAcrnAgentArbitraryCommand(vm, agentChannel, cmd, &result, timeout);
+    if (ret < 0)
+        VIR_FREE(result);
+
+ endjob:
+    virDomainObjEndAgentJob(vm);
+
+ cleanup:
+    virDomainObjEndAPI(&vm);
+    return result;
+}
+
 static const unsigned int acrnDomainGetGuestInfoSupportedTypes =
     VIR_DOMAIN_GUEST_INFO_USERS |
     VIR_DOMAIN_GUEST_INFO_OS |
@@ -1993,6 +2031,7 @@ static virHypervisorDriver acrnHypervisorDriver = {
     .domainDestroyFlags = acrnDomainDestroyFlags, /* 5.6.0 */
     .domainShutdown = acrnDomainShutdown, /* 1.3.3 */
     .domainShutdownFlags = acrnDomainShutdownFlags, /* 5.6.0 */
+    .domainQemuAgentCommand = acrnDomainQemuAgentCommand, /* 0.10.0 */
     .domainGetGuestInfo = acrnDomainGetGuestInfo, /* 11.4.0 */
     .domainPMSuspendForDuration = acrnDomainPMSuspendForDuration, /* 10.2.0 */
     .domainPMWakeup = acrnDomainPMWakeup, /* TBD */

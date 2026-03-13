@@ -28,6 +28,12 @@ int virAcrnAgentSuspend(virDomainObj *vm,
                         virDomainChrDef *agentChannel,
                         unsigned int target);
 
+int virAcrnAgentArbitraryCommand(virDomainObj *vm,
+                                 virDomainChrDef *agentChannel,
+                                 const char *cmd_str,
+                                 char **result,
+                                 int timeout);
+
 int virAcrnAgentGetUsers(virDomainObj *vm,
                          virDomainChrDef *agentChannel,
                          virTypedParameterPtr *params,

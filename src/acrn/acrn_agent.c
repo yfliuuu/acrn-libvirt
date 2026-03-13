@@ -18,6 +18,7 @@
 
 #include <config.h>
 
+#include <limits.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -29,6 +30,7 @@
 #include "virjson.h"
 #include "virlog.h"
 #include "virstring.h"
+#include "virtime.h"
 #include "virtypedparam.h"
 #include "virutil.h"
 
@@ -202,12 +204,29 @@ acrnAgentExtractReply(const char *line,
 
 static int
 acrnAgentReadCommandReply(int fd,
+                          int timeout,
                           virJSONValue **reply)
 {
     g_autoptr(GString) pending = g_string_new(NULL);
     char chunk[1024];
+    unsigned long long deadline = 0;
+    bool nowait = false;
 
     *reply = NULL;
+
+    if (timeout == VIR_DOMAIN_QEMU_AGENT_COMMAND_DEFAULT)
+        timeout = ACRN_AGENT_COMMAND_TIMEOUT_MS / 1000;
+
+    if (timeout == VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT) {
+        nowait = true;
+    } else if (timeout > VIR_DOMAIN_QEMU_AGENT_COMMAND_BLOCK) {
+        unsigned long long now;
+
+        if (virTimeMillisNow(&now) < 0)
+            return -1;
+
+        deadline = now + timeout * 1000ull;
+    }
 
     while (true) {
         struct pollfd pfd = {
@@ -216,9 +235,29 @@ acrnAgentReadCommandReply(int fd,
             .revents = 0,
         };
         ssize_t got;
+        int pollTimeout = -1;
         int rv;
 
-        rv = poll(&pfd, 1, ACRN_AGENT_COMMAND_TIMEOUT_MS);
+        if (nowait) {
+            pollTimeout = 0;
+        } else if (deadline) {
+            unsigned long long now;
+            unsigned long long remaining;
+
+            if (virTimeMillisNow(&now) < 0)
+                return -1;
+
+            if (now >= deadline) {
+                virReportError(VIR_ERR_AGENT_UNRESPONSIVE, "%s",
+                               _("guest agent command timed out"));
+                return -1;
+            }
+
+            remaining = deadline - now;
+            pollTimeout = remaining > INT_MAX ? INT_MAX : (int)remaining;
+        }
+
+        rv = poll(&pfd, 1, pollTimeout);
         if (rv < 0) {
             if (errno == EINTR)
                 continue;
@@ -356,12 +395,13 @@ acrnAgentCheckError(const char *command,
 
 
 static int
-acrnAgentCommand(virDomainChrDef *agentChannel,
-                 const char *command,
-                 bool report_unsupported,
-                 virJSONValue **reply)
+acrnAgentCommandExec(virDomainChrDef *agentChannel,
+                     const char *command,
+                     const char *msg,
+                     bool report_unsupported,
+                     int timeout,
+                     virJSONValue **reply)
 {
-    g_autofree char *msg = NULL;
     g_autoptr(virJSONValue) response = NULL;
     int fd = -1;
     int ret = -1;
@@ -378,12 +418,10 @@ acrnAgentCommand(virDomainChrDef *agentChannel,
     if (fd < 0)
         return -1;
 
-    msg = g_strdup_printf("{\"execute\":\"%s\"}\n", command);
-
     if (acrnAgentWriteAll(fd, msg, strlen(msg)) < 0)
         goto cleanup;
 
-    if (acrnAgentReadCommandReply(fd, &response) < 0)
+    if (acrnAgentReadCommandReply(fd, timeout, &response) < 0)
         goto cleanup;
 
     ret = acrnAgentCheckError(command, response, report_unsupported);
@@ -396,6 +434,29 @@ acrnAgentCommand(virDomainChrDef *agentChannel,
  cleanup:
     VIR_FORCE_CLOSE(fd);
     return ret;
+}
+
+static int
+acrnAgentCommandFull(virDomainChrDef *agentChannel,
+                     const char *command,
+                     bool report_unsupported,
+                     int timeout,
+                     virJSONValue **reply)
+{
+    g_autofree char *msg = g_strdup_printf("{\"execute\":\"%s\"}\n", command);
+
+    return acrnAgentCommandExec(agentChannel, command, msg,
+                                report_unsupported, timeout, reply);
+}
+
+static int
+acrnAgentCommand(virDomainChrDef *agentChannel,
+                 const char *command,
+                 bool report_unsupported,
+                 virJSONValue **reply)
+{
+    return acrnAgentCommandFull(agentChannel, command, report_unsupported,
+                                VIR_DOMAIN_QEMU_AGENT_COMMAND_DEFAULT, reply);
 }
 
 virDomainChrDef *
@@ -453,6 +514,60 @@ virAcrnAgentSuspend(virDomainObj *vm,
  cleanup:
     VIR_FORCE_CLOSE(fd);
     return ret;
+}
+
+
+int
+virAcrnAgentArbitraryCommand(virDomainObj *vm,
+                             virDomainChrDef *agentChannel,
+                             const char *cmd_str,
+                             char **result,
+                             int timeout)
+{
+    g_autoptr(virJSONValue) cmd = NULL;
+    g_autoptr(virJSONValue) reply = NULL;
+    g_autofree char *cmdJSON = NULL;
+    g_autofree char *msg = NULL;
+    const char *command = "<unknown>";
+
+    if (!vm || !agentChannel || !cmd_str || !result) {
+        virReportError(VIR_ERR_INVALID_ARG, "%s",
+                       _("invalid guest agent configuration"));
+        return -1;
+    }
+
+    *result = NULL;
+
+    if (timeout < VIR_DOMAIN_QEMU_AGENT_COMMAND_MIN) {
+        virReportError(VIR_ERR_INVALID_ARG,
+                       _("guest agent timeout '%1$d' is less than the minimum '%2$d'"),
+                       timeout, VIR_DOMAIN_QEMU_AGENT_COMMAND_MIN);
+        return -1;
+    }
+
+    if (!(cmd = virJSONValueFromString(cmd_str)))
+        return -1;
+
+    if (virJSONValueGetType(cmd) == VIR_JSON_TYPE_OBJECT) {
+        const char *execute = virJSONValueObjectGetString(cmd, "execute");
+
+        if (execute)
+            command = execute;
+    }
+
+    if (!(cmdJSON = virJSONValueToString(cmd, false)))
+        return -1;
+
+    msg = g_strdup_printf("%s\n", cmdJSON);
+
+    if (acrnAgentCommandExec(agentChannel, command, msg, true,
+                             timeout, &reply) < 0)
+        return -1;
+
+    if (!(*result = virJSONValueToString(reply, false)))
+        return -1;
+
+    return 0;
 }
 
 
